@@ -33,7 +33,7 @@ var calendar = CalendarApp.getCalendarById(calendarId);
 var events = calendar.getEvents(fromDate, toDate);
 
 var oncall_string = "(9-18|9-18 on call)";
-var off_string = "Off";
+var off_string = "(Off|Off on call)";
 var day_string = "Day";
 var night_string = "Night";
 
@@ -46,6 +46,8 @@ var start_ot_night_time = "10:00:00 PM";
 var end_ot_night_time = "6:00:00 AM";
 var break_t = "1";
 
+var working_hour; /////testing 4/2/2019
+
 // Edit below variables as needed
 var public_holiday_regex = "(Jan 01|Feb 04|Feb 05|Feb 06|Mar 01|May 01|May 06|Jun 06|Aug 15|Sep 12|Sep 13|Oct 03|Oct 09|Dec 25)"//original 2019
 var public_holiday_array = ["Jan 01", "Feb 04", "Feb 05", "Feb 06", "Mar 01", "May 06", "Jun 06","Aug 15", "Sep 12", "Sep 13", "Oct 03", "Oct 09", "Dec 25"]; //original 2019
@@ -56,11 +58,16 @@ var public_holiday_array = ["Jan 01", "Feb 04", "Feb 05", "Feb 06", "Mar 01", "M
 //var public_holiday_array = ["Jan 01", "Feb 15", "Feb 16", "Feb 17", "Mar 01", "May 01", "May 05", "May 22", "Jun 06", "Jun 13", "Aug 15", "Sep 23", "Sep 24", 
 //                           "Sep 25", "Sep 26", "Oct 03", "Oct 09", "Dec 25"]; //2018 testing
 
-
 // get shift data from spreadsheet
 var shiftdata = spreadsheet.getRange(date_column + row_start + ":" + user_column + numRow).getValues();
 var act_working_hours;
 var night_work_ot;
+
+function initialSetup(){
+  var cell = SpreadsheetApp.getActiveSheet().getRange("A3:A"+numRow);
+  cell.setNumberFormat("MM/dd/yyyy"); 
+}
+
 
 /*
 synToCalendar()
@@ -78,6 +85,8 @@ function syncToCalendar(){
   var blue_cal = '9';
   var orange_cal = '6';
   var gray_cal = '8';
+  var palered_cal = '4';
+  var yellow_cal = '5';
   
   for(x=0; x < shiftdata.length; x++){
     var shiftdate = shiftdata[x];
@@ -87,11 +96,17 @@ function syncToCalendar(){
     if(shift.match(day_string)){
       eventCal.createAllDayEvent(shift, date).setColor(blue_cal);
     }
-    else if(shift==night_string){
+    else if(shift.match(night_string)){
       eventCal.createAllDayEvent(shift, date).setColor(orange_cal);
     }
+    else if(shift.match(oncall_string)){
+      eventCal.createAllDayEvent(shift, date).setColor(palered_cal);
+    } 
+    else if(shift.match(off_string)){
+      eventCal.createAllDayEvent(shift, date).setColor(gray_cal);
+    }
     else{
-      eventCal.createAllDayEvent(shift, date).setColor(gray_cal); 
+      eventCal.createAllDayEvent(shift, date).setColor(yellow_cal);
     } 
   }
 }
@@ -120,7 +135,7 @@ preconditions:
 - enter start date and end date that you want to remove from on spreadsheet A3 to An (n is numRow)
 */
 function clearCalendar(){
-  var regex = "(Day|Off|Night|9-18|9-18 on call)";
+  var regex = "(Day|Off|Night|9-18|9-18 on call|Vacation|Off on call)";
   //var regex = day_string|off_string|night_string|oncall_string;
   for(var i=0; i<events.length;i++){
    var ev = events[i];
@@ -144,7 +159,7 @@ function clearOT(){
     ot_value = spreadsheet.getRange("H"+(i+3) + ":T"+(i+3)).setValue("");
   }
   total_ot = spreadsheet.getRange("C2").setValue("");
-  copy_helper = spreadsheet.getRange("Q"+numRow).setBackground("white");
+  copy_helper = spreadsheet.getRange("Q3:Q"+numRow).setBackground("white");
 }
 
 /*
@@ -185,11 +200,8 @@ function otTimeAdd(){
   
   var copy_helper;
   
-  //Formular used in MS Ecxel to calculate actual working hours and night work ot
-  //actual formula requires equal sign(=) but Google spread sheet has the same formula(MINUTE) which is not compatible with MS Excel one
-  //so I removed equal sign(=) and return the string result on Googld sheet 
-  act_working_hours = spreadsheet.getRange("K" + row_start).setValue('MINUTE(TEXT(MOD(I3-H3,1),"h:m"))/60+HOUR(TEXT(MOD(I3-H3,1),"h:m"))-J3');
-  night_work_ot = spreadsheet.getRange("N" + row_start).setValue('MINUTE(TEXT(MOD(M3-L3,1),"h:m"))/60+HOUR(TEXT(MOD(M3-L3,1),"h:m"))');
+  var hour;
+  var minute;
   
   for(var i=0; i < shiftdata.length; i++){
     var shiftdate = shiftdata[i];
@@ -204,12 +216,19 @@ function otTimeAdd(){
     
     //act_working_hours = spreadsheet.getRange("K"+(i+3)).setValue('=MINUTE(TEXT(MOD(I'+(i+3)+ '-H'+(i+3) + ',1),"h:m"))/60+HOUR(TEXT(MOD(I'+ (i+3)+ '-H'+(i+3) + ',1),"h:m"))-J'+(i+3));
     
+   
+    
     if(shift.match(day_string)){
       day_ct++;
       
       day_start = spreadsheet.getRange("H"+(i+3)).setValue(start_day_time); //8:00:00 AM
       day_end = spreadsheet.getRange("I"+(i+3)).setValue(end_day_time); //8:00:00 PM
       break_time = spreadsheet.getRange("J"+(i+3)).setValue(break_t);
+      
+      //////////// testing 4/3/2019
+      working_hour = calcTime(start_day_time, end_day_time); 
+      Logger.log("WORKING HOUR = " + working_hour);
+      //////////// testing 4/3/2019
       
       if(date_string.match(public_holiday_regex)){
         holiday_day_ct++;
@@ -267,6 +286,8 @@ function otTimeAdd(){
     else{
       Logger.log("else = " + shift);
     }
+
+    
   }
   
   copy_helper = spreadsheet.getRange("Q"+numRow).setBackground("yellow");
@@ -275,17 +296,7 @@ function otTimeAdd(){
   var holiday_tonight_total = holiday_tonight_ct - night_night_holiday_ct;
   var holiday_tmrnight_total = holiday_tmrnight_ct - night_night_holiday_ct;
   var night_total = night_ct - holiday_tonight_total - holiday_tmrnight_total - night_night_holiday_ct;
- 
-  /*
-  Logger.log("TOTAL COUNT = " + holiday_day_ct + holiday_tonight_ct + holiday_tmrnight_ct + night_night_holiday_ct + oncall_ct);
-  Logger.log("day count(8) = " + day_total);
-  Logger.log("night count(0) = " + night_total);
-  Logger.log("oncall count(0) = " + oncall_ct);
-  Logger.log("holiday day count(2) = " + holiday_day_ct);
-  Logger.log("holiday tonight count(3) = " + holiday_tonight_total); 
-  Logger.log("holiday tmrnight count(1) = " + holiday_tmrnight_total);
-  Logger.log("holiday night_night count(3) = " + night_night_holiday_ct);
-  */
+
   
   var ct_oncall = oncall_ct * 8;
   var ct_day = day_total * 11; //11
@@ -294,15 +305,33 @@ function otTimeAdd(){
   var ct_holiday_tonight = holiday_tonight_total * 23; //23
   var ct_holiday_tmrnight =  holiday_tmrnight_total * 26; //26
   var ct_night_night_holiday = night_night_holiday_ct * 30; //30
-  
-  /*
-  Logger.log("ct holiday day = " + ct_holiday_day);
-  Logger.log("ct holiday tonight" + ct_holiday_tonight);
-  Logger.log("ct holiday tmrnight" + ct_holiday_tmrnight);
-  Logger.log("ct night night holiday" + ct_night_night_holiday);
-  */
+
   var ot = spreadsheet.getRange(ot_column + "2").setValue(ct_oncall + ct_day + ct_night + ct_holiday_day + ct_holiday_tonight + ct_holiday_tmrnight + ct_night_night_holiday);
-  
+
+  var rangeList = spreadsheet.getRangeList(['H3:J'+numRow, 'L3:M'+numRow, 'O3:Q'+numRow]);
+  rangeList.activate();
 }
 
+function calcTime(start, end){
+  Logger.log("Caculate Time Difference");
+  Logger.log("start = " + start);
+  Logger.log("end = " + end);
+  var start_split;
+  var end_split;
+  start_split = String(start).split(" ");
+  Logger.log("start split = " + start_split);
+  var start_split_colon;
+  start_split_colon = String(start_split[0]).split(":");
+  Logger.log("start split colon = " + start_split_colon);
+  var start_time;
+  start_time = start_split_colon[0] + start_split_colon[1];
+  Logger.log("##########start time = " + start_time);
+  
+  return "HI";
+}
 
+function selectRange(){
+  var select_range = spreadsheet.getRange("H3:Q"+numRow);
+  spreadsheet.setActiveRange(select_range);
+
+}
